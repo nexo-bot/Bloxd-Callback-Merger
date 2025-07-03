@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Bloxd.io Callback Merger</title>
+        <style>
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                font-family: "Segoe UI", monospace;
+                background: #000;
+                overflow: hidden;
+                color: #fff;
+            }
+            body::before {
+                content: "";
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.4);
+                z-index: -1;
+            }
+            .container {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(15, 15, 15, 0.95);
+                border-radius: 16px;
+                padding: 20px;
+                width: 90%;
+                max-width: 950px;
+                backdrop-filter: blur(12px);
+                box-shadow: 0 0 30px rgba(0, 0, 0, 0.7);
+                animation: fadeIn 0.5s ease-out;
+            }
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                    transform: translate(-50%, -48%);
+                }
+                to {
+                    opacity: 1;
+                    transform: translate(-50%, -50%);
+                }
+            }
+            .tabs {
+                display: flex;
+                margin-bottom: 10px;
+            }
+            .tab {
+                flex: 1;
+                background: #111;
+                padding: 10px;
+                border: none;
+                color: #aaa;
+                cursor: pointer;
+                font-weight: bold;
+            }
+            .tab.active {
+                background: #222;
+                color: #fff;
+            }
+            .code-box {
+                background: #111;
+                color: #eee;
+                font-family: monospace;
+                padding: 12px;
+                height: 400px;
+                border-radius: 10px;
+                overflow: auto;
+                white-space: pre-wrap;
+                outline: none;
+                scrollbar-width: thin;
+                scrollbar-color: #444 #111;
+            }
+            .code-box::-webkit-scrollbar {
+                width: 8px;
+            }
+            .code-box::-webkit-scrollbar-thumb {
+                background: #444;
+                border-radius: 4px;
+            }
+            .placeholder:empty::before {
+                content: attr(data-placeholder);
+                color: #555;
+                pointer-events: none;
+            }
+            .hidden {
+                display: none;
+            }
+            .actions {
+                text-align: center;
+                margin-top: 15px;
+            }
+            .actions button {
+                margin: 5px;
+                padding: 10px 18px;
+                background: #111;
+                color: #ccc;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: background 0.2s, color 0.2s;
+            }
+            .actions button:hover {
+                background: #222;
+            }
+            .actions button.active {
+                background: #333;
+                color: #fff;
+            }
+            .toast {
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #222;
+                color: #eee;
+                padding: 10px 18px;
+                border-radius: 6px;
+                box-shadow: 0 0 10px #000;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+                z-index: 999;
+            }
+            .toast.show {
+                opacity: 1;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="tabs"><button class="tab active" onclick="switchTab('input')">Paste the Code</button><button class="tab" onclick="switchTab('output')">Merged Code</button></div>
+            <div id="inputBox" class="code-box placeholder" contenteditable="true" data-placeholder="Paste your Bloxd.io scripts here..."></div>
+            <pre id="outputBox" class="code-box hidden placeholder" data-placeholder="Merged callbacks will appear here..."><code></code></pre>
+            <div class="actions">
+                <button onclick="mergeCallbacks()">Merge</button><button onclick="copyOutput()">Copy</button><button onclick="toggleFormat('prettify')" id="btnPrettify">Prettify</button>
+                <button onclick="toggleFormat('minify')" id="btnMinify">Minify</button><button onclick="triggerUpload()">Upload</button><button onclick="downloadOutput()">Download</button>
+            </div>
+        </div>
+        <div class="toast" id="toastBox"></div>
+        <input type="file" id="fileInput" accept=".js,.txt" style="display: none;" />
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.14.7/beautify.min.js"></script>
+        <script>
+            const callbacks = [
+                "tick",
+                "onClose",
+                "onPlayerJoin",
+                "onPlayerLeave",
+                "onPlayerJump",
+                "onRespawnRequest",
+                "playerCommand",
+                "onPlayerChat",
+                "onPlayerChangeBlock",
+                "onPlayerDropItem",
+                "onPlayerPickedUpItem",
+                "onPlayerSelectInventorySlot",
+                "onBlockStand",
+                "onPlayerAttemptCraft",
+                "onPlayerCraft",
+                "onPlayerAttemptOpenChest",
+                "onPlayerOpenedChest",
+                "onPlayerMoveItemOutOfInventory",
+                "onPlayerMoveInvenItem",
+                "onPlayerMoveItemIntoIdxs",
+                "onPlayerSwapInvenSlots",
+                "onPlayerMoveItemWithAmt",
+                "onPlayerAttemptAltAction",
+                "onPlayerAltAction",
+                "onPlayerClick",
+                "onClientOptionUpdated",
+                "onMobSettingUpdated",
+                "onInventoryUpdated",
+                "onChestUpdated",
+                "onWorldChangeBlock",
+                "onCreateBloxdMeshEntity",
+                "onEntityCollision",
+                "onPlayerAttemptSpawnMob",
+                "onWorldAttemptSpawnMob",
+                "onPlayerSpawnMob",
+                "onWorldSpawnMob",
+                "onWorldAttemptDespawnMob",
+                "onMobDespawned",
+                "onPlayerAttack",
+                "onPlayerDamagingOtherPlayer",
+                "onPlayerDamagingMob",
+                "onMobDamagingPlayer",
+                "onMobDamagingOtherMob",
+                "onPlayerKilledOtherPlayer",
+                "onMobKilledPlayer",
+                "onPlayerKilledMob",
+                "onMobKilledOtherMob",
+                "onPlayerPotionEffect",
+                "onPlayerDamagingMeshEntity",
+                "onPlayerBreakMeshEntity",
+                "onPlayerUsedThrowable",
+                "onPlayerThrowableHitTerrain",
+                "onTouchscreenActionButton",
+                "onTaskClaimed",
+                "onChunkLoaded",
+                "onPlayerRequestChunk",
+                "onItemDropCreated",
+                "onPlayerStartChargingItem",
+                "onPlayerFinishChargingItem",
+                "doPeriodicSave",
+            ];
+            let lastFormat = null;
+            let originalOutput = "";
+            function switchTab(tab) {
+                document.getElementById("inputBox").classList.toggle("hidden", tab !== "input");
+                document.getElementById("outputBox").classList.toggle("hidden", tab !== "output");
+                document.querySelectorAll(".tab").forEach((b, i) => b.classList.toggle("active", (tab === "input" && i === 0) || (tab === "output" && i === 1)));
+            }
+            function mergeCallbacks() {
+                const input = document.getElementById("inputBox").textContent;
+                const merged = {},
+                    declarations = [],
+                    helpers = [];
+                callbacks.forEach((cb) => (merged[cb] = []));
+                const lines = input.split(/\r?\n/);
+                let i = 0;
+                while (i < lines.length) {
+                    const line = lines[i].trim();
+                    if (/^((let|const|var)\s+[a-zA-Z_$][\w$]*\s*=|^[a-zA-Z_$][\w$]*\s*=)/.test(line) && !line.includes("=>") && !line.startsWith("function")) {
+                        declarations.push(lines[i]);
+                        i++;
+                        continue;
+                    }
+                    if (/^function\s+[a-zA-Z_$][\w$]*\s*\(.*?\)\s*{/.test(line)) {
+                        const start = i;
+                        let brace = 0,
+                            started = !1;
+                        while (i < lines.length) {
+                            brace += (lines[i].match(/{/g) || []).length;
+                            brace -= (lines[i].match(/}/g) || []).length;
+                            if (!started && lines[i].includes("{")) started = !0;
+                            if (started && brace === 0) break;
+                            i++;
+                        }
+                        helpers.push(lines.slice(start, i + 1).join("\n"));
+                        i++;
+                        continue;
+                    }
+                    i++;
+                }
+                callbacks.forEach((cb) => {
+                    const patterns = [new RegExp(`function\\s+${cb}\\s*\\(.*?\\)\\s*{`, "g"), new RegExp(`${cb}\\s*=\\s*\\(.*?\\)\\s*=>\\s*{`, "g")];
+                    patterns.forEach((pattern) => {
+                        let match;
+                        while ((match = pattern.exec(input)) !== null) {
+                            const startIdx = match.index + match[0].length;
+                            let braceCount = 1,
+                                idx = startIdx;
+                            while (idx < input.length && braceCount > 0) {
+                                if (input[idx] === "{") braceCount++;
+                                else if (input[idx] === "}") braceCount--;
+                                idx++;
+                            }
+                            const body = input.slice(startIdx, idx - 1).trim();
+                            if (body) merged[cb].push(body);
+                            pattern.lastIndex = idx;
+                        }
+                    });
+                });
+                let result = "";
+                if (declarations.length) result += declarations.join("\n") + "\n\n";
+                if (helpers.length) result += helpers.join("\n\n") + "\n\n";
+                callbacks.forEach((cb) => {
+                    if (merged[cb].length) {
+                        result += `${cb} = () => {\n`;
+                        merged[cb].forEach((body) => (result += indent(body, 2) + "\n"));
+                        result += "};\n\n";
+                    }
+                });
+                originalOutput = result.trim();
+                document.querySelector("#outputBox code").textContent = originalOutput;
+                lastFormat = null;
+                switchTab("output");
+                showToast("Merged successfully!");
+            }
+            function indent(code, spaces) {
+                const pad = " ".repeat(spaces);
+                return code
+                    .split("\n")
+                    .map((line) => pad + line)
+                    .join("\n");
+            }
+            function copyOutput() {
+                const text = document.querySelector("#outputBox code").textContent;
+                navigator.clipboard.writeText(text).then(() => showToast("Copied to clipboard!"));
+            }
+            function toggleFormat(type) {
+                const btn = document.getElementById("btn" + (type === "prettify" ? "Prettify" : "Minify"));
+                const otherBtn = document.getElementById("btn" + (type === "prettify" ? "Minify" : "Prettify"));
+                const codeEl = document.querySelector("#outputBox code");
+                if (lastFormat === type) {
+                    lastFormat = null;
+                    codeEl.textContent = originalOutput;
+                    btn.classList.remove("active");
+                    showToast("Formatting reset");
+                    return;
+                }
+                lastFormat = type;
+                btn.classList.add("active");
+                otherBtn.classList.remove("active");
+                codeEl.textContent = type === "prettify" ? js_beautify(originalOutput) : originalOutput.replace(/\s+/g, " ").trim();
+                showToast(type.charAt(0).toUpperCase() + type.slice(1) + " applied!");
+            }
+            function showToast(msg) {
+                const toast = document.getElementById("toastBox");
+                toast.textContent = msg;
+                toast.classList.add("show");
+                setTimeout(() => toast.classList.remove("show"), 2000);
+            }
+            function triggerUpload() {
+                document.getElementById("fileInput").click();
+            }
+            document.getElementById("fileInput").addEventListener("change", function (e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function (event) {
+                    document.getElementById("inputBox").textContent = event.target.result;
+                    showToast("File loaded!");
+                    switchTab("input");
+                };
+                reader.readAsText(file);
+            });
+            function downloadOutput() {
+                const code = document.querySelector("#outputBox code").textContent;
+                const blob = new Blob([code], { type: "text/plain" });
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = "merged_code.txt";
+                a.click();
+                showToast("Downloaded!");
+            }
+        </script>
+    </body>
+</html>
